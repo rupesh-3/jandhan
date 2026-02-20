@@ -3,298 +3,370 @@ import GateViz from './components/GateViz'
 import EventTicker from './components/EventTicker'
 import './index.css'
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-const toINR = n => '₹ ' + Number(n).toLocaleString('en-IN')
-const now8 = () => new Date().toLocaleTimeString('en-IN', { hour12: false })
-const maskH = h => h ? <><span className="h-s">{h.slice(0, 6)}</span><span className="h-m">{'•'.repeat(9)}</span><span className="h-e">{h.slice(-6)}</span></> : '—'
+// ── Constants ─────────────────────────────────────────────────────────────────
+const INI_BUDGET = 1_000_000
+const SCHEME_ICON = { Food: '🌾', Health: '🏥', Pension: '👴' }
+const toINR = n => '₹\u00a0' + Number(n ?? 0).toLocaleString('en-IN')
+const ts8 = () => new Date().toLocaleTimeString('en-IN', { hour12: false })
 
-// Mini sparkline (purely visual)
-function Spark({ color, seed = 0 }) {
-  const pts = Array.from({ length: 12 }, (_, i) => 5 + Math.abs(Math.sin(seed + i * 0.8)) * 14)
-  const w = 60, h = 22
-  const mx = Math.max(...pts), mn = Math.min(...pts), r = mx - mn || 1
-  const d = pts.map((v, i) => `${(i / 11) * w},${h - ((v - mn) / r) * h}`).join(' ')
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function Spark({ color, seed }) {
+  const pts = Array.from({ length: 12 }, (_, i) => 4 + Math.abs(Math.sin(seed * 2 + i * 0.9)) * 14)
+  const w = 58, h = 20, mx = Math.max(...pts), mn = Math.min(...pts), rng = mx - mn || 1
+  const d = pts.map((v, i) => `${(i / 11) * w},${h - ((v - mn) / rng) * h}`).join(' ')
   return (
-    <svg className="sparkline" width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
+    <svg className="spark" width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
       <polyline points={d} fill="none" stroke={color} strokeWidth="1.5"
         strokeLinejoin="round" strokeLinecap="round" />
     </svg>
   )
 }
 
-// Arc progress (budget)
 function Arc({ pct, color }) {
-  const r = 20, cx = 26, cy = 26, circ = 2 * Math.PI * r
+  const r = 19, cx = 25, cy = 25, circ = 2 * Math.PI * r
+  const off = circ * (1 - Math.max(0, Math.min(1, pct ?? 1)))
   return (
-    <svg className="arc-wrap" width="52" height="52" viewBox="0 0 52 52">
-      <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="3" />
+    <svg width="50" height="50" viewBox="0 0 50 50" style={{ flexShrink: 0 }}>
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,.07)" strokeWidth="3" />
       <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth="3"
-        strokeDasharray={circ} strokeDashoffset={circ * (1 - Math.max(0, Math.min(1, pct)))}
+        strokeDasharray={circ} strokeDashoffset={off}
         transform={`rotate(-90 ${cx} ${cy})`} strokeLinecap="round"
-        style={{ transition: 'stroke-dashoffset 0.7s ease' }} />
+        style={{ transition: 'stroke-dashoffset .7s ease' }} />
     </svg>
   )
 }
 
-// Empty ledger SVG illustration
+function Logo() {
+  return (
+    <svg className="mast-logo" viewBox="0 0 38 38" fill="none">
+      <polygon points="19,2 34,10 34,28 19,36 4,28 4,10"
+        stroke="#F5A623" strokeWidth="1.5" />
+      <circle cx="19" cy="19" r="5.5" stroke="#F5A623" strokeWidth="1.2" />
+      {[0, 45, 90, 135, 180, 225, 270, 315].map((deg, i) => {
+        const a = deg * Math.PI / 180
+        return (
+          <line key={i}
+            x1={19 + 7.5 * Math.cos(a)} y1={19 + 7.5 * Math.sin(a)}
+            x2={19 + 11 * Math.cos(a)} y2={19 + 11 * Math.sin(a)}
+            stroke="#F5A623" strokeWidth="1" opacity=".65" />
+        )
+      })}
+    </svg>
+  )
+}
+
 function EmptyLedger() {
   return (
     <div className="ledger-empty">
-      <svg width="90" height="60" viewBox="0 0 90 60">
-        {[10, 45, 80].map((x, i) => (
+      <svg width="100" height="56" viewBox="0 0 100 56">
+        {[12, 50, 88].map((x, i) => (
           <g key={i}>
-            <circle cx={x} cy="30" r="13" fill="none"
-              stroke="rgba(245,166,35,0.2)" strokeWidth="1.5" strokeDasharray="4 3" />
-            <text x={x} y="34" textAnchor="middle" fontSize="12" fill="rgba(245,166,35,0.35)">
+            <circle cx={x} cy="28" r="13" fill="none"
+              stroke="rgba(245,166,35,.2)" strokeWidth="1.5" strokeDasharray="4 3" />
+            <text x={x} y="33" textAnchor="middle" fontSize="13"
+              fill="rgba(245,166,35,.35)">
               {['🛡', '🏦', '🕐'][i]}
             </text>
           </g>
         ))}
-        <line x1="23" y1="30" x2="32" y2="30" stroke="rgba(255,255,255,0.1)" strokeWidth="1" strokeDasharray="2 2" />
-        <line x1="58" y1="30" x2="67" y2="30" stroke="rgba(255,255,255,0.1)" strokeWidth="1" strokeDasharray="2 2" />
+        <line x1="25" y1="28" x2="37" y2="28" stroke="rgba(255,255,255,.1)" strokeWidth="1" strokeDasharray="2 2" />
+        <line x1="63" y1="28" x2="75" y2="28" stroke="rgba(255,255,255,.1)" strokeWidth="1" strokeDasharray="2 2" />
       </svg>
       <p className="empty-txt">No transactions processed.<br />System standing by.</p>
     </div>
   )
 }
 
-const SCHEME_ICONS = { Food: '🌾', Health: '🏥', Pension: '👴', default: '📋' }
-const INI_BUDGET = 1000000
+// Render a masked hash: first6•••••••••last6
+function HashCell({ full, short }) {
+  const display = short || full || ''
+  // Show abbreviated: first 6 chars + bullets + last 6 chars
+  const s = display.replace(/\.*$/, '') // strip trailing dots from server truncation
+  const maskEl = s.length >= 12
+    ? <><span className="hs">{s.slice(0, 6)}</span>
+      <span className="hm">{'•'.repeat(9)}</span>
+      <span className="he">{s.slice(-6)}</span></>
+    : <span className="hs">{display}</span>
 
-// ── Logo SVG ─────────────────────────────────────────────────────────────────
-function Logo() {
   return (
-    <svg className="mast-logo" viewBox="0 0 40 40" fill="none">
-      <polygon points="20,2 35,10 35,30 20,38 5,30 5,10" fill="none" stroke="#F5A623" strokeWidth="1.5" />
-      <circle cx="20" cy="20" r="6" fill="none" stroke="#F5A623" strokeWidth="1.2" />
-      {[0, 45, 90, 135, 180, 225, 270, 315].map((deg, i) => {
-        const rad = deg * Math.PI / 180, x1 = 20 + 8 * Math.cos(rad), y1 = 20 + 8 * Math.sin(rad),
-          x2 = 20 + 12 * Math.cos(rad), y2 = 20 + 12 * Math.sin(rad)
-        return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#F5A623" strokeWidth="1" opacity="0.7" />
-      })}
-    </svg>
+    <td className="td-h hash-cell">
+      {maskEl}
+      {full && (
+        <div className="hash-tip">
+          <div className="ht-hash">{full}</div>
+          <button className="ht-copy"
+            onClick={() => navigator.clipboard?.writeText(full)}>
+            📋 Copy
+          </button>
+        </div>
+      )}
+    </td>
   )
 }
 
 // ── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
+  // System state
   const [sysState, setSysState] = useState(null)
   const [ledger, setLedger] = useState([])
   const [schemes, setSchemes] = useState([])
-  const [result, setResult] = useState(null)
-  const [events, setEvents] = useState([])
+
+  // Claim form
   const [citizenId, setCitizenId] = useState('')
   const [scheme, setScheme] = useState('')
-  const [loading, setLoading] = useState(false)
   const [ddOpen, setDdOpen] = useState(false)
-  const [idFocused, setIdFocused] = useState(false)
-  const [confirm, setConfirm] = useState(false)
-  const [intHash, setIntHash] = useState('—')
-  const [scramble, setScramble] = useState(false)
-  const [newRowId, setNewRowId] = useState(null)
-  const confirmTimer = useRef(null)
-  const startTime = useRef(Date.now())
+  const [focused, setFocused] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState(null)
 
-  // ── Uptime ────────────────────────────────────────────────────────────────
+  // Admin
+  const [confirm, setConfirm] = useState(false)
+  const confirmRef = useRef(null)
+
+  // Counters (tracked client-side for accuracy)
+  const [approved, setApproved] = useState(0)
+  const [rejected, setRejected] = useState(0)
+
+  // Ticker events
+  const [events, setEvents] = useState([])
+  const emit = (msg, cls = '') =>
+    setEvents(prev => [{ t: ts8(), msg, cls }, ...prev].slice(0, 60))
+
+  // Integrity hash display
+  const [ihash, setIhash] = useState('awaiting first transaction…')
+  const [ihashSc, setIhashSc] = useState(false)
+
+  // New row highlight
+  const [newTs, setNewTs] = useState(null)
+
+  // Uptime counter
+  const startRef = useRef(Date.now())
   const [uptime, setUptime] = useState('00:00:00')
   useEffect(() => {
     const iv = setInterval(() => {
-      const s = Math.floor((Date.now() - startTime.current) / 1000)
-      const h = String(Math.floor(s / 3600)).padStart(2, '0')
-      const m = String(Math.floor((s % 3600) / 60)).padStart(2, '0')
-      const sec = String(s % 60).padStart(2, '0')
-      setUptime(`${h}:${m}:${sec}`)
+      const s = Math.floor((Date.now() - startRef.current) / 1000)
+      setUptime(
+        [Math.floor(s / 3600), Math.floor((s % 3600) / 60), s % 60]
+          .map(n => String(n).padStart(2, '0')).join(':')
+      )
     }, 1000)
     return () => clearInterval(iv)
   }, [])
 
-  // ── Poll backend ──────────────────────────────────────────────────────────
+  // ── Poll backend ────────────────────────────────────────────────────────────
   const poll = useCallback(async () => {
     try {
       const [sr, lr] = await Promise.all([
-        fetch('/api/admin/status'), fetch('/api/admin/ledger')
+        fetch('/api/admin/status'),
+        fetch('/api/admin/ledger'),
       ])
-      const sd = await sr.json(), ld = await lr.json()
+      if (!sr.ok || !lr.ok) return
+      const sd = await sr.json()
+      const ld = await lr.json()
       setSysState(sd)
-      const entries = ld.entries || []
+      const entries = Array.isArray(ld.entries) ? ld.entries : []
       setLedger(prev => {
         if (entries.length > prev.length) {
           const newest = entries[entries.length - 1]
-          setNewRowId(newest?.timestamp)
-          setTimeout(() => setNewRowId(null), 950)
-          // Scramble integrity hash
-          setScramble(true); setTimeout(() => setScramble(false), 500)
-          // Derive integrity hash display
-          setIntHash(sd.ledgerIntegrity
-            ? `chain:${entries.length}·sha256:${Math.random().toString(36).slice(2, 18)}...`
-            : 'INTEGRITY FAILURE')
+          setNewTs(newest?.timestamp)
+          setTimeout(() => setNewTs(null), 1000)
+          setIhashSc(true)
+          setTimeout(() => setIhashSc(false), 500)
+          const fakeHex = Array.from({ length: 8 }, () =>
+            Math.floor(Math.random() * 0xffff).toString(16).padStart(4, '0')
+          ).join('')
+          setIhash(`sha256·${fakeHex}`)
         }
         return entries
       })
-    } catch { /* silent */ }
+      // Sync approved count from server if available
+      if (sd.transactionCount !== undefined) setApproved(sd.transactionCount)
+    } catch { /* silent - backend may be starting up */ }
   }, [])
 
+  // Load schemes + start polling
   useEffect(() => {
-    fetch('/api/schemes').then(r => r.json()).then(d => setSchemes(d.schemes || [])).catch(() => { })
+    fetch('/api/schemes')
+      .then(r => r.json())
+      .then(d => setSchemes(d.schemes || []))
+      .catch(() => setSchemes(['Food', 'Health', 'Pension']))
     poll()
     const iv = setInterval(poll, 5000)
     return () => clearInterval(iv)
   }, [poll])
 
-  // ── Emit ticker event ─────────────────────────────────────────────────────
-  const emit = (msg, cls = '') => {
-    setEvents(prev => [{ t: now8(), msg, cls }, ...prev].slice(0, 40))
-  }
+  // Close dropdown on outside click
+  useEffect(() => {
+    const close = () => setDdOpen(false)
+    document.addEventListener('click', close)
+    return () => document.removeEventListener('click', close)
+  }, [])
 
-  // ── Submit claim ──────────────────────────────────────────────────────────
+  // ── Submit claim ─────────────────────────────────────────────────────────────
   const handleSubmit = async e => {
     e.preventDefault()
     if (!citizenId || !scheme || loading) return
-    setLoading(true); setResult(null)
-    emit(`CLAIM SUBMITTED — ID:${citizenId.slice(0, 4)}XXXXXXXX — SCHEME:${scheme}`, '')
+    setLoading(true)
+    setResult(null)
+    emit(`CLAIM SUBMITTED · ID:${citizenId.slice(0, 4)}•••••••• · SCHEME:${scheme}`, '')
     try {
-      const res = await fetch('/api/claim', {
+      const r = await fetch('/api/claim', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ citizen_id: citizenId, scheme })
+        body: JSON.stringify({ citizen_id: citizenId, scheme }),
       })
-      const data = await res.json()
+      const data = await r.json()
       setResult(data)
       if (data.approved) {
-        emit(`GATE APPROVED — SCHEME:${scheme} — AMT:${data.amount}`, 'tg')
+        setApproved(n => n + 1)
+        emit(`✅ GATE APPROVED · ${scheme} · ${toINR(data.amount)}`, 'tg')
       } else {
-        emit(`GATE ${data.gate?.toUpperCase() || '?'} REJECTED — ${data.reason?.slice(0, 50)}`, 'tr')
+        setRejected(n => n + 1)
+        emit(`❌ GATE ${(data.gate || '?').toUpperCase()} REJECTED · ${(data.reason || '').slice(0, 60)}`, 'tr')
       }
       poll()
     } catch {
-      setResult({ approved: false, gate: 'Network', reason: 'Server unreachable. Please try again.' })
-      emit('NETWORK ERROR — SERVER UNREACHABLE', 'tr')
+      setResult({ approved: false, gate: 'Network', reason: 'Server unreachable. Please retry.' })
+      emit('⚠ NETWORK ERROR — SERVER UNREACHABLE', 'tr')
     } finally {
-      setLoading(false); setCitizenId('')
+      setLoading(false)
+      setCitizenId('')
     }
   }
 
-  // ── Admin ─────────────────────────────────────────────────────────────────
+  // ── Admin ─────────────────────────────────────────────────────────────────────
   const handlePause = async () => {
     if (!confirm) {
       setConfirm(true)
-      clearTimeout(confirmTimer.current)
-      confirmTimer.current = setTimeout(() => setConfirm(false), 3000)
+      clearTimeout(confirmRef.current)
+      confirmRef.current = setTimeout(() => setConfirm(false), 3000)
       return
     }
     setConfirm(false)
-    await fetch('/api/admin/pause', { method: 'POST' })
-    emit('ADMIN ACTION — EMERGENCY PAUSE ACTIVATED', 'tr')
-    poll()
-  }
-  const handleResume = async () => {
-    await fetch('/api/admin/resume', { method: 'POST' })
-    emit('ADMIN ACTION — SYSTEM RESUMED', 'tg')
-    poll()
+    try {
+      await fetch('/api/admin/pause', { method: 'POST' })
+      emit('🛑 ADMIN — EMERGENCY PAUSE ACTIVATED', 'tr')
+      poll()
+    } catch { emit('⚠ ADMIN ACTION FAILED — NETWORK ERROR', 'tr') }
   }
 
-  const status = sysState?.status || 'active'
+  const handleResume = async () => {
+    try {
+      await fetch('/api/admin/resume', { method: 'POST' })
+      emit('▶ ADMIN — SYSTEM RESUMED', 'tg')
+      poll()
+    } catch { emit('⚠ ADMIN ACTION FAILED — NETWORK ERROR', 'tr') }
+  }
+
+  // ── Derived state ─────────────────────────────────────────────────────────────
+  const status = sysState?.status ?? 'active'
   const budget = sysState?.budget ?? INI_BUDGET
   const budgetPct = budget / INI_BUDGET
-  const txCount = sysState?.transactionCount ?? 0
-  const rejected = ledger.length - txCount
+  const txCount = sysState?.transactionCount ?? approved
   const integrity = sysState?.ledgerIntegrity !== false
   const isBlocked = status !== 'active'
 
-  const schemeAmtMap = {}
-  // Build basic scheme→amount from ledger (fallback)
-  const selSchemeIcon = SCHEME_ICONS[scheme] || SCHEME_ICONS.default
-
+  // ── Render ────────────────────────────────────────────────────────────────────
   return (
     <div className={`app ${status}`}>
-      {/* ── Masthead ── */}
+
+      {/* ── Masthead ─────────────────────────────────────────────────────── */}
       <header className={`mast ${status}`}>
         <div className="mast-brand">
           <Logo />
           <div>
             <div className="mast-name">
-              {status === 'frozen' ? '⚠ SYSTEM FROZEN' : 'Jan-Dhan Gateway'}
+              {status === 'frozen' ? '⚠\u00a0SYSTEM FROZEN' : 'Jan-Dhan Gateway'}
             </div>
-            <div className="mast-sub">Sequential Validation Engine // v2.1.4</div>
+            <div className="mast-sub">Sequential Validation Engine\u00a0//\u00a0v2.1.4</div>
           </div>
         </div>
-        <div className="mast-pills">
-          <div className={`s-pill ${status === 'active' ? 'active-sys' : ''}`}>
-            <span className={`dot ${status === 'active' ? 'teal' : status === 'paused' ? 'gold' : 'red'}`} />
+        <div className="pills">
+          <div className={`pill ${status === 'active' ? 'sys-active' : ''}`}>
+            <span className={`dot ${status === 'active' ? 't' : status === 'paused' ? 'g' : 'r'}`} />
             <strong>{status.toUpperCase()}</strong>
           </div>
-          <div className="s-pill">
-            <span className="dot gold" />
-            <strong>{toINR(budget)}</strong>
-            <span>budget</span>
+          <div className="pill">
+            <span className="dot g" />
+            <span>{toINR(budget)}</span>
           </div>
-          <div className="s-pill">
-            <span className={`dot ${integrity ? 'teal' : 'red'}`} />
+          <div className="pill">
+            <span className={`dot ${integrity ? 't' : 'r'}`} />
             <strong>LEDGER {integrity ? 'INTACT' : 'TAMPERED'}</strong>
           </div>
         </div>
       </header>
 
-      {/* ── Frozen Toast ── */}
+      {/* Frozen notification */}
       {status === 'frozen' && (
         <div className="frz-toast">
-          <div className="frz-toast-title">🔴 Security Event — System Frozen</div>
-          <div className="frz-toast-body">All transactions blocked. Admin restart required.</div>
+          <div className="ft-title">🔴 Security Event — System Frozen</div>
+          <div className="ft-body">All claim processing halted. Admin restart required.</div>
         </div>
       )}
 
-      {/* ── Main Layout ── */}
+      {/* ── Main layout ──────────────────────────────────────────────────── */}
       <div className="layout">
 
-        {/* ─── Command Surface (left) ─── */}
+        {/* ─── Left: Command Surface ─────────────────────────────────────── */}
         <div className="cmd">
 
-          {/* Claim Form */}
-          <div className="cmd-sec">
-            <div className="sec-lbl">Initiate Claim Verification</div>
-            <form onSubmit={handleSubmit}>
+          {/* Claim form */}
+          <div className="sec">
+            <div className="sec-ttl">Initiate Claim Verification</div>
+            <form onSubmit={handleSubmit} autoComplete="off">
+
               {/* Citizen ID */}
-              <div className="f-group">
-                <label className={`f-lbl ${idFocused ? 'hashing' : ''}`}>
+              <div className="fg">
+                <label className={`fl ${focused ? 'hashing' : ''}`}>
                   Citizen ID
-                  <span className="f-lbl-tag">SHA-256 HASHING ACTIVE</span>
+                  <span className="fl-tag">SHA-256 ACTIVE</span>
                 </label>
-                <div className={`id-wrap ${idFocused ? 'focused' : ''}`}>
-                  <input className="id-inp" type="text" inputMode="numeric"
+                <div className={`id-wrap ${focused ? 'on' : ''}`}>
+                  <input
+                    className="id-inp"
+                    type="text" inputMode="numeric"
                     placeholder="000000000000"
-                    value={citizenId}
                     maxLength={12}
+                    value={citizenId}
+                    disabled={loading}
                     onChange={e => setCitizenId(e.target.value.replace(/\D/g, '').slice(0, 12))}
-                    onFocus={() => setIdFocused(true)}
-                    onBlur={() => setIdFocused(false)}
-                    disabled={loading} />
+                    onFocus={() => setFocused(true)}
+                    onBlur={() => setFocused(false)}
+                  />
                 </div>
               </div>
 
-              {/* Scheme Dropdown */}
-              <div className="f-group">
-                <label className="f-lbl">Benefit Scheme</label>
-                <div className="dd-wrap">
-                  <button type="button" className={`dd-btn ${ddOpen ? 'open' : ''}`}
-                    onClick={() => setDdOpen(o => !o)} disabled={loading}>
-                    <div className="dd-btn-l">
+              {/* Scheme dropdown */}
+              <div className="fg">
+                <label className="fl">Benefit Scheme</label>
+                <div className="dd" onClick={e => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    className={`dd-btn ${ddOpen ? 'open' : ''}`}
+                    disabled={loading}
+                    onClick={() => setDdOpen(o => !o)}
+                  >
+                    <div className="dd-left">
                       {scheme
-                        ? <><span>{selSchemeIcon}</span><span>{scheme}</span></>
-                        : <span className="dd-ph">— Select Scheme —</span>
-                      }
+                        ? <><span className="s-icon">{SCHEME_ICON[scheme] || '📋'}</span><span>{scheme}</span></>
+                        : <span className="dd-ph">— Select scheme —</span>}
                     </div>
-                    <span className="dd-arrow">▾</span>
+                    <span className="dd-arr">▾</span>
                   </button>
                   {ddOpen && (
                     <div className="dd-menu">
                       {schemes.map(s => (
-                        <div key={s} className={`dd-opt ${scheme === s ? 'sel' : ''}`}
-                          onClick={() => { setScheme(s); setDdOpen(false) }}>
-                          <div className="dd-opt-l">
-                            <span className="s-icon">{SCHEME_ICONS[s] || '📋'}</span>
+                        <div
+                          key={s}
+                          className={`dd-opt ${scheme === s ? 'sel' : ''}`}
+                          onClick={() => { setScheme(s); setDdOpen(false) }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                            <span className="s-icon">{SCHEME_ICON[s] || '📋'}</span>
                             <span>{s}</span>
                           </div>
-                          <span className="opt-amt">Fixed Rate</span>
+                          <span className="o-amt">Fixed rate</span>
                         </div>
                       ))}
                     </div>
@@ -302,36 +374,39 @@ export default function App() {
                 </div>
               </div>
 
-              <button type="submit"
+              {/* Submit */}
+              <button
+                type="submit"
                 className={`sub-btn ${isBlocked ? 'blocked' : ''}`}
-                disabled={loading || isBlocked || !citizenId || !scheme}>
-                <div className="btn-inner">
-                  {loading ? <><div className="spin" /><span>Processing…</span></>
-                    : isBlocked ? 'System Unavailable'
-                      : 'Verify Identity & Process Claim'}
+                disabled={loading || !citizenId || !scheme}
+              >
+                <div className="bi">
+                  {loading
+                    ? <><div className="spin" /><span>Processing…</span></>
+                    : isBlocked
+                      ? '⚠ System Unavailable'
+                      : 'Verify Identity\u00a0&\u00a0Process Claim'}
                 </div>
               </button>
             </form>
 
-            {/* Result */}
+            {/* Result panel */}
             {result && (
-              <div className={`result ${result.approved ? 'ok' : 'err'}`}>
+              <div className={`res ${result.approved ? 'ok' : 'err'}`}>
                 <div className="res-hd">
-                  <span className="res-icon">{result.approved ? '✅' : '❌'}</span>
+                  <span className="res-ico">{result.approved ? '✅' : '❌'}</span>
                   <span className="res-vd">{result.approved ? 'Approved' : 'Rejected'}</span>
                 </div>
-                <div className="res-reason">{result.reason}</div>
+                <div className="res-msg">{result.reason}</div>
                 {result.approved && (
-                  <div className="res-details">
-                    <div className="res-row">
-                      <span>Scheme</span><strong>{result.scheme}</strong>
-                    </div>
-                    <div className="res-row">
-                      <span>Amount</span><strong>{toINR(result.amount)}</strong>
-                    </div>
-                    <div className="res-row">
+                  <div className="res-rows">
+                    <div className="rr"><span>Scheme</span><strong>{result.scheme}</strong></div>
+                    <div className="rr"><span>Amount</span><strong>{toINR(result.amount)}</strong></div>
+                    <div className="rr">
                       <span>Timestamp</span>
-                      <strong>{new Date(result.timestamp).toLocaleTimeString('en-IN')}</strong>
+                      <strong>{result.timestamp
+                        ? new Date(result.timestamp).toLocaleTimeString('en-IN', { hour12: false })
+                        : ts8()}</strong>
                     </div>
                   </div>
                 )}
@@ -340,44 +415,48 @@ export default function App() {
           </div>
 
           {/* Gate Visualization */}
-          <div className="cmd-sec">
-            <div className="sec-lbl">Validation Gates</div>
-            <GateViz result={result} onAnimationDone={() => { }} />
+          <div className="sec">
+            <div className="sec-ttl">Validation Gates</div>
+            <GateViz result={result} />
           </div>
 
           {/* Admin Controls */}
-          <div className="cmd-sec">
-            <div className="sec-lbl danger">Admin Control — Authorized Access Only</div>
-
-            <div className={`sys-pill-wide ${status}`}>
-              <div className="spl">
-                <span className={`dot ${status === 'active' ? 'teal' : status === 'paused' ? 'gold' : 'red'}`} />
-                <span className="spw-label">
-                  {status === 'active' ? 'System Operational' : status === 'paused' ? 'System Paused' : 'System Frozen'}
+          <div className="sec">
+            <div className="sec-ttl danger">Admin Control — Authorized Access Only</div>
+            <div className={`sys-wide ${status}`}>
+              <div className="sw-l">
+                <span className={`dot ${status === 'active' ? 't' : status === 'paused' ? 'g' : 'r'}`} />
+                <span className="sw-lbl">
+                  {status === 'active' ? 'System Operational'
+                    : status === 'paused' ? 'System Paused'
+                      : 'System Frozen'}
                 </span>
               </div>
-              <span className="spw-uptime">{uptime}</span>
+              <span className="sw-up">{uptime}</span>
             </div>
-
-            <div className="adm-btns">
-              <button className={`btn-lock ${confirm ? 'confirm' : ''}`}
-                onClick={handlePause} disabled={status !== 'active'}>
-                {confirm && <div className="confirm-tip">Click again to confirm lockdown</div>}
-                🛑 Emergency Lockdown
+            <div className="adm-row">
+              <button
+                className={`btn-lock ${confirm ? 'confirm' : ''}`}
+                onClick={handlePause}
+                disabled={status !== 'active'}
+              >
+                {confirm && <div className="ctip">Click again to confirm lockdown</div>}
+                🛑&nbsp;Emergency Lockdown
               </button>
               <button className="btn-res" onClick={handleResume} disabled={status !== 'paused'}>
-                ▶ Resume
+                ▶&nbsp;Resume
               </button>
             </div>
           </div>
         </div>
 
-        {/* ─── Intelligence Panel (right) ─── */}
+        {/* ─── Right: Intelligence Panel ─────────────────────────────────── */}
         <div className="intel">
-          {/* Metric Cards */}
-          <div className="metrics">
-            <div className="area-lbl">Live Operations Dashboard</div>
-            <div className="mcards">
+
+          {/* Metric cards */}
+          <div className="met">
+            <div className="a-lbl">Live Operations Dashboard</div>
+            <div className="mcg">
               <div className="mc gold">
                 <div className="mc-top">
                   <span className="mc-lbl">Budget Remaining</span>
@@ -405,7 +484,7 @@ export default function App() {
                 <div className="mc-top">
                   <span className="mc-lbl">Rejected</span>
                 </div>
-                <div className="mc-val">{Math.max(0, ledger.length - txCount + (ledger.length === 0 && txCount === 0 ? 0 : 0))}</div>
+                <div className="mc-val">{rejected}</div>
                 <div className="mc-bot">
                   <span className="mc-sub">this session</span>
                   <Spark color="#E63946" seed={3} />
@@ -416,32 +495,32 @@ export default function App() {
                 <div className="mc-top">
                   <span className="mc-lbl">Ledger Integrity</span>
                 </div>
-                <div className="mc-val" style={{ fontSize: 16, paddingTop: 4 }}>
+                <div className="mc-val">
                   {integrity ? '✅ VALID' : '⚠ TAMPERED'}
                 </div>
                 <div className="mc-bot">
-                  <span className="mc-sub">{ledger.length} entries</span>
+                  <span className="mc-sub">{ledger.length} entries chained</span>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Integrity Strip */}
-          <div className="int-strip">
-            <span className="int-icon">{integrity ? '🔒' : '⚠️'}</span>
-            <span className="int-label">Chain Integrity {integrity ? 'Verified' : 'FAILED'}</span>
-            <span className={`int-hash ${scramble ? 'scramble' : ''}`}>
-              {intHash || 'awaiting first transaction…'}
+          {/* Integrity strip */}
+          <div className="istrip">
+            <span className="is-icon">{integrity ? '🔒' : '⚠️'}</span>
+            <span className={`is-label ${integrity ? '' : 'bad'}`}>
+              Chain {integrity ? 'Verified' : 'FAILED'}
             </span>
+            <span className={`is-hash ${ihashSc ? 'scr' : ''}`}>{ihash}</span>
           </div>
 
-          {/* Ledger */}
+          {/* Immutable Ledger */}
           <div className="ledger">
             <div className="ledger-hd">
               <span className="ledger-ttl">Immutable Transaction Ledger</span>
               <span className="ledger-cnt">{ledger.length} records</span>
             </div>
-            <div className="ledger-scroll">
+            <div className="ledger-body">
               {ledger.length === 0
                 ? <EmptyLedger />
                 : (
@@ -458,39 +537,31 @@ export default function App() {
                     </thead>
                     <tbody>
                       {[...ledger].reverse().map((e, i) => (
-                        <tr key={e.timestamp || i}
-                          className={`lrow ${e.timestamp === newRowId ? 'new' : ''}`}>
+                        <tr
+                          key={e.timestamp || i}
+                          className={`lrow ${e.timestamp === newTs ? 'new' : ''}`}
+                        >
                           <td className="td-t">{ledger.length - i}</td>
                           <td className="td-t">
-                            {new Date(e.timestamp).toLocaleTimeString('en-IN', { hour12: false })}
+                            {e.timestamp
+                              ? new Date(e.timestamp).toLocaleTimeString('en-IN', { hour12: false })
+                              : '—'}
                           </td>
-                          <td className="td-h">
-                            {maskH(e.citizenHash || e.currHash)}
-                            <div className="htip">
-                              <div className="htip-hash">
-                                {e.citizenHash || 'hash unavailable'}
-                              </div>
-                              <button className="htip-copy"
-                                onClick={() => navigator.clipboard?.writeText(e.citizenHash || '')}>
-                                Copy
-                              </button>
-                            </div>
-                          </td>
+                          <HashCell full={e.citizenHash} short={e.citizenHash} />
                           <td className="td-s">{e.scheme}</td>
                           <td className="td-a">{toINR(e.amount)}</td>
-                          <td className="td-c"><span className="tc">⛓</span></td>
+                          <td className="td-c"><span className="ch-ic">⛓</span></td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                )
-              }
+                )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* ── Event Ticker ── */}
+      {/* ── Event Ticker ─────────────────────────────────────────────────── */}
       <EventTicker events={events} />
     </div>
   )
